@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: educational-platform-api
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        fromDatabase:
+          name: educational-platform-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: FRONTEND_URL
+        value: https://your-frontend-domain.com
+
+databases:
+  - name: educational-platform-db
+    databaseName: educational_platform
+    user: admin
