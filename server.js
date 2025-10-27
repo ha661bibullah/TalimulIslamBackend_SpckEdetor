@@ -26,14 +26,7 @@ app.post("/api/send-otp", async (req, res) => {
     console.log(`Attempting to send OTP to: ${email}`);
     console.log(`EMAIL_USER configured: ${process.env.EMAIL_USER ? 'Yes' : 'No'}`);
     
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-    
+   
     // Add timeout
     const mailOptions = {
       from: process.env.EMAIL_USER,
