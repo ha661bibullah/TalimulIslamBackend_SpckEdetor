@@ -56,6 +56,30 @@ app.post("/api/send-otp", async (req, res) => {
   }
 });
 
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+  // এই লাইনগুলো যোগ করুন
+  pool: true,
+  maxConnections: 5,
+  rateDelta: 20000,
+  rateLimit: 5
+});
+
+user.otpExpires = Date.now() + 600000; // 10 মিনিট
+
+try {
+  await transporter.sendMail(mailOptions);
+  console.log('OTP sent successfully');
+} catch (error) {
+  console.error('Email error:', error);
+  throw new Error('ইমেইল পাঠাতে ব্যর্থ');
+}
+
 // MongoDB কানেকশন
 mongoose
   .connect(process.env.MONGO_URI)
