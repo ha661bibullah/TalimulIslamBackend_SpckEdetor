@@ -86,9 +86,9 @@ app.use(cors())
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
-// Email Transporter কনফিগারেশন
+// Email Transporter কনফিগারেশন - CORRECTED
 const createTransporter = () => {
-  return nodemailer.createTransporter({
+  return nodemailer.createTransport({
     service: "gmail",
     auth: {
       user: process.env.EMAIL_USER,
@@ -191,6 +191,8 @@ app.post("/api/send-otp", async (req, res) => {
       errorMessage = "ইমেইল সার্ভারে সংযোগ করতে সময় লাগছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।";
     } else if (error.code === "EAUTH") {
       errorMessage = "ইমেইল লগইন ক্রেডেনশিয়াল সমস্যা। অ্যাডমিনকে জানান।";
+    } else if (error.message.includes("createTransporter")) {
+      errorMessage = "ইমেইল সার্ভিস কনফিগারেশন সমস্যা। অ্যাডমিনকে জানান।";
     }
 
     res.status(500).json({
@@ -241,7 +243,7 @@ app.post("/api/forgot-password", async (req, res) => {
           </div>
           <p style="margin-top: 20px; color: #666; text-align: center;">
             ধন্যবাদ,<br>
-            তালিমুল ইসলাম একাডেমি টим
+            তালিমুল ইসলাম একাডেমি টিম
           </p>
         </div>
       `,
@@ -270,6 +272,8 @@ app.post("/api/forgot-password", async (req, res) => {
     let errorMessage = "পাসওয়ার্ড রিসেট করতে সমস্যা হয়েছে";
     if (error.message.includes("timeout")) {
       errorMessage = "ইমেইল সার্ভারে সংযোগ করতে সময় লাগছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।";
+    } else if (error.message.includes("createTransporter")) {
+      errorMessage = "ইমেইল সার্ভিস কনফিগারেশন সমস্যা। অ্যাডমিনকে জানান।";
     }
 
     res.status(500).json({ 
