@@ -17,6 +17,45 @@ const io = new Server(server, {
   },
 })
 
+
+app.post("/api/send-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    
+    console.log(`Attempting to send OTP to: ${email}`);
+    console.log(`EMAIL_USER configured: ${process.env.EMAIL_USER ? 'Yes' : 'No'}`);
+    
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+    
+    // Add timeout
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "তালিমুল ইসলাম একাডেমি - OTP কোড",
+      text: `আপনার OTP কোড: ${otp}`,
+    };
+    
+    await transporter.sendMail(mailOptions);
+    console.log(`OTP sent successfully to: ${email}`);
+    
+    // Rest of your code...
+  } catch (error) {
+    console.error("Detailed OTP error:", error);
+    res.status(500).json({
+      success: false,
+      message: "OTP পাঠাতে সমস্যা হয়েছে",
+      error: error.message
+    });
+  }
+});
+
 // MongoDB কানেকশন
 mongoose
   .connect(process.env.MONGO_URI)
