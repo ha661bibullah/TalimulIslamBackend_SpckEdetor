@@ -1,4 +1,4 @@
- const express = require("express")
+const express = require("express")
 const mongoose = require("mongoose")
 const nodemailer = require("nodemailer")
 const cors = require("cors")
@@ -16,45 +16,6 @@ const io = new Server(server, {
     origin: "*",
   },
 })
-
-
-app.post("/api/send-otp", async (req, res) => {
-  try {
-    const { email } = req.body;
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    
-    console.log(`Attempting to send OTP to: ${email}`);
-    console.log(`EMAIL_USER configured: ${process.env.EMAIL_USER ? 'Yes' : 'No'}`);
-    
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-    
-    // Add timeout
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "তালিমুল ইসলাম একাডেমি - OTP কোড",
-      text: `আপনার OTP কোড: ${otp}`,
-    };
-    
-    await transporter.sendMail(mailOptions);
-    console.log(`OTP sent successfully to: ${email}`);
-    
-    // Rest of your code...
-  } catch (error) {
-    console.error("Detailed OTP error:", error);
-    res.status(500).json({
-      success: false,
-      message: "OTP পাঠাতে সমস্যা হয়েছে",
-      error: error.message
-    });
-  }
-});
 
 // MongoDB কানেকশন
 mongoose
@@ -74,7 +35,7 @@ const User = mongoose.model(
     otpExpires: Date,
     resetToken: String,
     resetTokenExpires: Date,
-  }),
+  })
 )
 
 const Payment = mongoose.model(
@@ -91,7 +52,7 @@ const Payment = mongoose.model(
     amount: Number,
     status: { type: String, default: "pending" },
     date: { type: Date, default: Date.now },
-  }),
+  })
 )
 
 const Course = mongoose.model(
@@ -104,7 +65,7 @@ const Course = mongoose.model(
     duration: String,
     instructor: String,
     createdAt: { type: Date, default: Date.now },
-  }),
+  })
 )
 
 const Review = mongoose.model(
@@ -116,53 +77,153 @@ const Review = mongoose.model(
     rating: { type: Number, required: true, min: 1, max: 5 },
     reviewText: { type: String, required: true },
     date: { type: Date, default: Date.now },
-    isApproved: { type: Boolean, default: true }, // Admin approval required
-  }),
+    isApproved: { type: Boolean, default: true },
+  })
 )
 
 // মিডলওয়্যার
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
-// ====== নতুন পেমেন্ট ভ্যালিডেশন মিডলওয়্যার ======
-const validatePayment = (req, res, next) => {
-  const { name, email, phone, courseId, paymentMethod, txnId, amount } = req.body
-
-  if (!name || !email || !phone || !courseId || !paymentMethod || !txnId || !amount) {
-    return res.status(400).json({ message: "সমস্ত প্রয়োজনীয় ফিল্ড পূরণ করুন" })
-  }
-
-  if (!["bkash", "nagad", "bank", "card"].includes(paymentMethod)) {
-    return res.status(400).json({ message: "অবৈধ পেমেন্ট মাধ্যম" })
-  }
-
-  next()
+// Email Transporter কনফিগারেশন
+const createTransporter = () => {
+  return nodemailer.createTransporter({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    connectionTimeout: 30000,
+    socketTimeout: 30000,
+    greetingTimeout: 30000,
+  })
 }
 
-// ======= নতুন রাউট =======
+// OTP সেন্ড এন্ডপয়েন্ট
+app.post("/api/send-otp", async (req, res) => {
+  try {
+    if (!req.body || !req.body.email) {
+      return res.status(400).json({
+        success: false,
+        message: "ইমেইল ঠিকানা প্রদান করুন",
+      })
+    }
+
+    const { email } = req.body;
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "সঠিক ইমেইল ঠিকানা প্রদান করুন",
+      })
+    }
+
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    
+    console.log(`Attempting to send OTP to: ${email}`);
+    
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error("EMAIL_USER or EMAIL_PASS environment variables are missing");
+      return res.status(500).json({
+        success: false,
+        message: "ইমেইল সার্ভিস কনফিগার করা নেই",
+      });
+    }
+
+    const transporter = createTransporter();
+    
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "তালিমুল ইসলাম একাডেমি - OTP কোড",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #4caf50; text-align: center;">OTP কোড</h2>
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center;">
+            <p style="font-size: 16px; margin-bottom: 20px;">আপনার OTP কোড:</p>
+            <div style="background: #fff; padding: 15px; border-radius: 5px; font-size: 24px; font-weight: bold; color: #333; letter-spacing: 5px; margin: 20px 0;">
+              ${otp}
+            </div>
+            <p style="color: #666; font-size: 14px;">এই OTP কোডটি ৫ মিনিটের জন্য বৈধ।</p>
+          </div>
+          <p style="margin-top: 20px; color: #666; text-align: center;">
+            ধন্যবাদ,<br>
+            তালিমুল ইসলাম একাডেমি টিম
+          </p>
+        </div>
+      `,
+    };
+    
+    const emailPromise = transporter.sendMail(mailOptions);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Email sending timeout")), 25000);
+    });
+
+    await Promise.race([emailPromise, timeoutPromise]);
+    
+    console.log(`OTP sent successfully to: ${email}`);
+    
+    const user = await User.findOne({ email });
+    if (user) {
+      user.otp = otp;
+      user.otpExpires = Date.now() + 300000;
+      await user.save();
+    } else {
+      global.tempOTPs = global.tempOTPs || {};
+      global.tempOTPs[email] = {
+        otp,
+        expires: Date.now() + 300000,
+      };
+    }
+
+    res.json({ 
+      success: true, 
+      message: "OTP সফলভাবে পাঠানো হয়েছে" 
+    });
+    
+  } catch (error) {
+    console.error("Detailed OTP error:", error);
+    
+    let errorMessage = "OTP পাঠাতে সমস্যা হয়েছে";
+    if (error.message.includes("timeout")) {
+      errorMessage = "ইমেইল সার্ভারে সংযোগ করতে সময় লাগছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।";
+    } else if (error.code === "EAUTH") {
+      errorMessage = "ইমেইল লগইন ক্রেডেনশিয়াল সমস্যা। অ্যাডমিনকে জানান।";
+    }
+
+    res.status(500).json({
+      success: false,
+      message: errorMessage,
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+});
 
 // Password reset routes
 app.post("/api/forgot-password", async (req, res) => {
   try {
-    const { email } = req.body
-
-    // Check if user exists
-    const user = await User.findOne({ email })
-    if (!user) {
-      return res.status(404).json({ success: false, message: "এই ইমেইলটি রেজিস্টার্ড নয়" })
+    if (!req.body || !req.body.email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "ইমেইল ঠিকানা প্রদান করুন" 
+      });
     }
 
-    // Generate OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString()
+    const { email } = req.body;
 
-    // Send OTP email
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    })
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "এই ইমেইলটি রেজিস্টার্ড নয়" 
+      });
+    }
+
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+
+    const transporter = createTransporter();
 
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -180,217 +241,159 @@ app.post("/api/forgot-password", async (req, res) => {
           </div>
           <p style="margin-top: 20px; color: #666; text-align: center;">
             ধন্যবাদ,<br>
-            তালিমুল ইসলাম একাডেমি টিম
+            তালিমুল ইসলাম একাডেমি টим
           </p>
         </div>
       `,
+    };
+
+    const emailPromise = transporter.sendMail(mailOptions);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Email sending timeout")), 25000);
+    });
+
+    await Promise.race([emailPromise, timeoutPromise]);
+
+    user.otp = otp;
+    user.otpExpires = Date.now() + 300000;
+    await user.save();
+
+    console.log(`Password reset OTP sent to ${email}: ${otp}`);
+
+    res.json({ 
+      success: true, 
+      message: "OTP সফলভাবে পাঠানো হয়েছে" 
+    });
+  } catch (error) {
+    console.error("Error in forgot password:", error);
+    
+    let errorMessage = "পাসওয়ার্ড রিসেট করতে সমস্যা হয়েছে";
+    if (error.message.includes("timeout")) {
+      errorMessage = "ইমেইল সার্ভারে সংযোগ করতে সময় লাগছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।";
     }
 
-    await transporter.sendMail(mailOptions)
-
-    // Save OTP to user
-    user.otp = otp
-    user.otpExpires = Date.now() + 300000 // 5 minutes
-    await user.save()
-
-    console.log(`Password reset OTP sent to ${email}: ${otp}`) // Added logging for debugging
-
-    res.json({ success: true, message: "OTP সফলভাবে পাঠানো হয়েছে" })
-  } catch (error) {
-    console.error("Error in forgot password:", error)
-    res.status(500).json({ success: false, message: "পাসওয়ার্ড রিসেট করতে সমস্যা হয়েছে" })
+    res.status(500).json({ 
+      success: false, 
+      message: errorMessage,
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
-})
+});
 
 // পাসওয়ার্ড রিসেটের জন্য OTP যাচাইকরণ
 app.post("/api/verify-reset-otp", async (req, res) => {
   try {
-    const { email, otp } = req.body
+    if (!req.body || !req.body.email || !req.body.otp) {
+      return res.status(400).json({
+        success: false,
+        message: "ইমেইল এবং OTP প্রদান করুন",
+      });
+    }
 
-    console.log(`Verifying reset OTP for ${email}: ${otp}`) // Added logging
+    const { email, otp } = req.body;
 
-    // ডাটাবেজে ইউজার খুঁজুন
-    const user = await User.findOne({ email })
+    console.log(`Verifying reset OTP for ${email}: ${otp}`);
+
+    const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({
         success: false,
         message: "ব্যবহারকারী পাওয়া যায়নি",
-      })
+      });
     }
 
-    // OTP এবং এর মেয়াদকাল চেক করুন
     if (!user.otp || user.otp !== otp || user.otpExpires < Date.now()) {
-      console.log(
-        `OTP verification failed for ${email}. User OTP: ${user.otp}, Provided: ${otp}, Expires: ${user.otpExpires}, Now: ${Date.now()}`,
-      ) // Added detailed logging
+      console.log(`OTP verification failed for ${email}`);
       return res.status(400).json({
         success: false,
         message: "অবৈধ OTP অথবা OTP এর মেয়াদ শেষ",
-      })
+      });
     }
 
-    console.log(`OTP verified successfully for ${email}`) // Added success logging
-
-    // OTP সঠিক হলে সফল রেসপন্স দিন (OTP এখনও ডিলিট করবেন না)
+    console.log(`OTP verified successfully for ${email}`);
+    
     res.json({
       success: true,
       message: "OTP সঠিকভাবে যাচাই হয়েছে",
-    })
+    });
   } catch (error) {
-    console.error("OTP যাচাই করতে সমস্যা:", error)
+    console.error("OTP যাচাই করতে সমস্যা:", error);
     res.status(500).json({
       success: false,
       message: "OTP যাচাই করতে সমস্যা হয়েছে",
-    })
+    });
   }
-})
+});
 
 // নতুন পাসওয়ার্ড সেট করার রাউট
 app.post("/api/reset-password", async (req, res) => {
   try {
-    const { email, otp, newPassword } = req.body
-
-    console.log(`Resetting password for ${email} with OTP: ${otp}`) // Added logging
-
-    // ভ্যালিডেশন
-    if (!email || !otp || !newPassword) {
+    if (!req.body || !req.body.email || !req.body.otp || !req.body.newPassword) {
       return res.status(400).json({
         success: false,
         message: "সমস্ত প্রয়োজনীয় ফিল্ড পূরণ করুন",
-      })
+      });
     }
+
+    const { email, otp, newPassword } = req.body;
 
     if (newPassword.length < 6) {
       return res.status(400).json({
         success: false,
         message: "পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে",
-      })
+      });
     }
 
-    // ডাটাবেজে ইউজার খুঁজুন
-    const user = await User.findOne({ email })
+    const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({
         success: false,
         message: "ব্যবহারকারী পাওয়া যায়নি",
-      })
+      });
     }
 
-    // OTP আবার চেক করুন (সিকিউরিটির জন্য)
     if (!user.otp || user.otp !== otp || user.otpExpires < Date.now()) {
-      console.log(`Password reset failed - OTP mismatch for ${email}`) // Added logging
       return res.status(400).json({
         success: false,
         message: "অবৈধ OTP অথবা OTP এর মেয়াদ শেষ",
-      })
+      });
     }
 
-    // নতুন পাসওয়ার্ড হ্যাশ করুন
-    const saltRounds = 10
-    const hashedPassword = await bcrypt.hash(newPassword, saltRounds)
-
-    console.log(`Updating password for ${email} in MongoDB`) // Added logging
-
-    // ইউজারের পাসওয়ার্ড আপডেট করুন এবং OTP ফিল্ডস ক্লিয়ার করুন
-    const updateResult = await User.findOneAndUpdate(
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    await User.findOneAndUpdate(
       { email: email },
       {
         $set: { password: hashedPassword },
         $unset: { otp: "", otpExpires: "" },
-      },
-      { new: true },
-    )
-
-    if (!updateResult) {
-      console.error(`Failed to update password for ${email}`) // Added error logging
-      return res.status(500).json({
-        success: false,
-        message: "পাসওয়ার্ড আপডেট করতে সমস্যা হয়েছে",
-      })
-    }
-
-    console.log(`Password successfully updated for ${email} in MongoDB`) // Added success logging
+      }
+    );
 
     res.json({
       success: true,
-      message: "পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে। এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।",
-    })
+      message: "পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে",
+    });
   } catch (error) {
-    console.error("পাসওয়ার্ড রিসেট করতে সমস্যা:", error)
+    console.error("পাসওয়ার্ড রিসেট করতে সমস্যা:", error);
     res.status(500).json({
       success: false,
       message: "পাসওয়ার্ড রিসেট করতে সমস্যা হয়েছে",
-    })
+    });
   }
-})
+});
 
-app.get("/api/users/:email/courses", async (req, res) => {
-  try {
-    const user = await User.findOne({ email: req.params.email })
-    if (!user) {
-      return res.status(404).json({ message: "User not found" })
-    }
-    res.json({ courses: user.courses || [] })
-  } catch (error) {
-    console.error("Error fetching user courses:", error)
-    res.status(500).json({ message: "Error fetching user courses" })
-  }
-})
-
-// OTP রাউটস
-app.post("/api/send-otp", async (req, res) => {
-  try {
-    const { email } = req.body
-    const otp = Math.floor(1000 + Math.random() * 9000).toString()
-
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    })
-
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "তালিমুল ইসলাম একাডেমি - OTP কোড",
-      text: `আপনার OTP কোড: ${otp}`,
-    }
-
-    await transporter.sendMail(mailOptions)
-
-    // শুধুমাত্র existing user-এর জন্য OTP update করা হবে
-    const user = await User.findOne({ email })
-    if (user) {
-      user.otp = otp
-      user.otpExpires = Date.now() + 300000
-      await user.save()
-    }
-    // নতুন user-এর জন্য আলাদা OTP storage তৈরি করা হবে
-    else {
-      // Temporary OTP storage for new users (you can also use a separate collection)
-      global.tempOTPs = global.tempOTPs || {}
-      global.tempOTPs[email] = {
-        otp,
-        expires: Date.now() + 300000,
-      }
-    }
-
-    res.json({ success: true, message: "OTP সফলভাবে পাঠানো হয়েছে" })
-  } catch (error) {
-    console.error("Error sending OTP:", error)
-    res.status(500).json({ success: false, message: "OTP পাঠাতে সমস্যা হয়েছে" })
-  }
-})
-
-// In your backend (server.js), modify the verify-otp endpoint:
-
+// OTP যাচাইকরণ
 app.post("/api/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body
 
-    // First check in temporary storage for new users
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "ইমেইল এবং OTP প্রদান করুন",
+      })
+    }
+
     if (global.tempOTPs && global.tempOTPs[email]) {
       const tempOTP = global.tempOTPs[email]
       if (tempOTP.otp === otp && tempOTP.expires > Date.now()) {
@@ -403,7 +406,6 @@ app.post("/api/verify-otp", async (req, res) => {
       })
     }
 
-    // Then check in database for existing users
     const user = await User.findOne({ email })
     if (!user || !user.otp) {
       return res.status(400).json({
@@ -426,7 +428,6 @@ app.post("/api/verify-otp", async (req, res) => {
       })
     }
 
-    // Clear OTP after successful verification
     user.otp = undefined
     user.otpExpires = undefined
     await user.save()
@@ -441,7 +442,22 @@ app.post("/api/verify-otp", async (req, res) => {
   }
 })
 
-// পেমেন্ট রাউটস (মিডলওয়্যার যুক্ত করা হয়েছে)
+// পেমেন্ট ভ্যালিডেশন মিডলওয়্যার
+const validatePayment = (req, res, next) => {
+  const { name, email, phone, courseId, paymentMethod, txnId, amount } = req.body
+
+  if (!name || !email || !phone || !courseId || !paymentMethod || !txnId || !amount) {
+    return res.status(400).json({ message: "সমস্ত প্রয়োজনীয় ফিল্ড পূরণ করুন" })
+  }
+
+  if (!["bkash", "nagad", "bank", "card"].includes(paymentMethod)) {
+    return res.status(400).json({ message: "অবৈধ পেমেন্ট মাধ্যম" })
+  }
+
+  next()
+}
+
+// পেমেন্ট রাউটস
 app.post("/api/payments", validatePayment, async (req, res) => {
   try {
     const payment = new Payment(req.body)
@@ -502,13 +518,11 @@ app.get("/api/admin/payments/:id", async (req, res) => {
   }
 })
 
-// ✅ আপডেটেড PUT রাউট
-// Update the PUT route for payment approval
+// পেমেন্ট আপডেট রাউট
 app.put("/api/admin/payments/:id", async (req, res) => {
   try {
     const { status } = req.body
 
-    // Validation
     if (!status || !["approved", "rejected", "pending"].includes(status)) {
       return res.status(400).json({
         success: false,
@@ -516,7 +530,6 @@ app.put("/api/admin/payments/:id", async (req, res) => {
       })
     }
 
-    // Update payment
     const payment = await Payment.findByIdAndUpdate(req.params.id, { status }, { new: true })
 
     if (!payment) {
@@ -528,9 +541,7 @@ app.put("/api/admin/payments/:id", async (req, res) => {
 
     console.log(`Payment ${payment._id} status updated to: ${status}`)
 
-    // If approved
     if (status === "approved") {
-      // Update user's course access
       const user = await User.findOneAndUpdate(
         { email: payment.email },
         { $addToSet: { courses: payment.courseId } },
@@ -539,7 +550,6 @@ app.put("/api/admin/payments/:id", async (req, res) => {
 
       console.log(`User ${payment.email} granted access to course ${payment.courseId}`)
 
-      // Send real-time notification to all connected clients
       const notification = {
         type: "courseAccessUpdated",
         email: payment.email,
@@ -550,17 +560,14 @@ app.put("/api/admin/payments/:id", async (req, res) => {
         timestamp: new Date().toISOString(),
       }
 
-      // Emit to all connected clients
       io.emit("courseAccessUpdated", notification)
 
       console.log("Course access notification broadcasted:", notification)
 
-      // Optional: Send email notification to user
       try {
         await sendCourseAccessEmail(payment.email, payment.name, payment.courseName || payment.courseId)
       } catch (emailError) {
         console.error("Failed to send email notification:", emailError)
-        // Don't fail the request if email fails
       }
     }
 
@@ -579,7 +586,7 @@ app.put("/api/admin/payments/:id", async (req, res) => {
   }
 })
 
-// Get reviews for a specific course
+// রিভিউ রাউটস
 app.get("/api/reviews/:courseId", async (req, res) => {
   try {
     const { courseId } = req.params
@@ -597,7 +604,6 @@ app.get("/api/reviews/:courseId", async (req, res) => {
   }
 })
 
-// Submit a new review
 app.post("/api/reviews", async (req, res) => {
   try {
     const { courseId, reviewerName, reviewerEmail, rating, reviewText } = req.body
@@ -623,7 +629,6 @@ app.post("/api/reviews", async (req, res) => {
       })
     }
 
-    // Check if user has already reviewed this course
     const existingReview = await Review.findOne({
       courseId,
       reviewerEmail,
@@ -636,7 +641,6 @@ app.post("/api/reviews", async (req, res) => {
       })
     }
 
-    // Create new review
     const review = new Review({
       courseId,
       reviewerName,
@@ -671,7 +675,6 @@ app.post("/api/reviews", async (req, res) => {
   }
 })
 
-// Admin: Get all reviews (pending and approved)
 app.get("/api/admin/reviews", async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query
@@ -699,7 +702,6 @@ app.get("/api/admin/reviews", async (req, res) => {
   }
 })
 
-// Admin: Approve/reject review
 app.put("/api/admin/reviews/:id", async (req, res) => {
   try {
     const { isApproved } = req.body
@@ -721,14 +723,6 @@ app.put("/api/admin/reviews/:id", async (req, res) => {
   }
 })
 
-// server.js-তে নোটিফিকেশন ইভেন্ট যোগ করুন
-io.on("connection", (socket) => {
-  console.log("A user connected")
-  socket.on("disconnect", () => {
-    console.log("A user disconnected")
-  })
-})
-
 // কোর্স রাউটস
 app.get("/api/courses", async (req, res) => {
   try {
@@ -741,20 +735,20 @@ app.get("/api/courses", async (req, res) => {
 })
 
 // Authentication Routes
-const saltRounds = 10
-
-// Registration route
 app.post("/api/register", async (req, res) => {
   try {
     const { name, email, password } = req.body
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "সমস্ত প্রয়োজনীয় ফিল্ড পূরণ করুন" })
+    }
 
     const existingUser = await User.findOne({ email })
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" })
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, saltRounds)
+    const hashedPassword = await bcrypt.hash(password, 10)
 
     const user = new User({
       name,
@@ -765,7 +759,6 @@ app.post("/api/register", async (req, res) => {
 
     await user.save()
 
-    // Generate JWT token
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" })
 
     res.status(201).json({
@@ -783,23 +776,24 @@ app.post("/api/register", async (req, res) => {
   }
 })
 
-// Login route
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "ইমেইল এবং পাসওয়ার্ড প্রদান করুন" })
+    }
 
     const user = await User.findOne({ email })
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials" })
     }
 
-    // Compare hashed password
     const isMatch = await bcrypt.compare(password, user.password)
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" })
     }
 
-    // Generate JWT token
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" })
 
     res.json({
@@ -817,24 +811,27 @@ app.post("/api/login", async (req, res) => {
   }
 })
 
+app.get("/api/users/:email/courses", async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.params.email })
+    if (!user) {
+      return res.status(404).json({ message: "User not found" })
+    }
+    res.json({ courses: user.courses || [] })
+  } catch (error) {
+    console.error("Error fetching user courses:", error)
+    res.status(500).json({ message: "Error fetching user courses" })
+  }
+})
+
 // হেল্পার ফাংশন
 async function notifyAdmin(paymentId) {
   console.log(`New payment created: ${paymentId}`)
 }
 
-async function notifyUser(email, courseId) {
-  console.log(`User with email ${email} granted access to course ${courseId}`)
-}
-
 async function sendCourseAccessEmail(email, name, courseName) {
   try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    })
+    const transporter = createTransporter()
 
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -869,13 +866,14 @@ async function sendCourseAccessEmail(email, name, courseName) {
 }
 
 // WebSocket কানেকশন
-// io.on("connection", (socket) => {
-//   console.log("A user connected")
-//   socket.on("disconnect", () => {
-//     console.log("A user disconnected")
-//   })
-// })
+io.on("connection", (socket) => {
+  console.log("A user connected")
+  socket.on("disconnect", () => {
+    console.log("A user disconnected")
+  })
+})
 
+// Error handling middleware
 app.use("*", (req, res) => {
   res.setHeader("Content-Type", "application/json")
   res.status(404).json({
